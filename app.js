@@ -12,21 +12,21 @@ app.use(express.json());
 app.use(cors());
 
 const middleware = async (req, res, next) => {
-console.log("middleware called")
+  console.log("middleware called");
 
   let jwtToken;
   let authHeaders = req.headers["authorization"];
   if (authHeaders !== undefined) {
-    console.log("invalid jwt token1")
+    console.log("invalid jwt token1");
     jwtToken = authHeaders.split(" ");
   }
   if (jwtToken === undefined) {
-    console.log("invalid jwt token2")
+    console.log("invalid jwt token2");
     res.status(400).send("invalid jwt Token");
   } else {
     jwt.verify(jwtToken[1], "MY_SECRET_TOKEN", async (err, result) => {
       if (err) {
-        console.log("invalid jwt token3")
+        console.log("invalid jwt token3");
         res.status(400).send("invalid jwt Token");
       } else {
         next();
@@ -48,7 +48,7 @@ mongoose
 // Define Schemas and Models
 const EmployeeSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  email: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
   date: { type: Date, default: Date.now },
 });
 const Employee = mongoose.model("Employee", EmployeeSchema);
@@ -56,7 +56,7 @@ const Employee = mongoose.model("Employee", EmployeeSchema);
 const KudosSchema = new mongoose.Schema({
   // id: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" }, // Assuming you meant this
   badge: { type: String, required: true },
- 
+
   recipientId: { type: String, required: true },
   //  recipient: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" }, // Updated to ObjectId and reference Employee
   message: { type: String, required: true },
@@ -92,13 +92,20 @@ app.post("/api/addEmployeeSignUp", async (req, res) => {
 
 app.post("/api/getEmployeeSignin", middleware, async (req, res) => {
   const { name, email } = req.body;
- 
+
   try {
     const employees = await Employee.find({
       $and: [{ name: name }, { email: email }],
     }).select("-__v");
-    console.log("success in verifying");
-    res.status(200).send(true);
+    if (employees.length === 0) {
+      console.log("employees", employees);
+      console.log("success in verifying");
+      res.status(500).send(false);
+    } else {
+      console.log("employees", employees);
+      console.log("success in verifying");
+      res.status(200).send(true);
+    }
   } catch (error) {
     console.error("Error in  verifying", error.message);
     res.status(500).send(false);
@@ -106,14 +113,13 @@ app.post("/api/getEmployeeSignin", middleware, async (req, res) => {
 });
 
 app.post("/api/addKudos", async (req, res) => {
+  console.log("api called");
 
-  console.log("api called")
-  
   try {
-    const {  recipientId, message, badge } = req.body;
+    const { recipientId, message, badge } = req.body;
 
     // Assuming 'recipient' is an Employee ID
-    const newKudo = new Kudos({  badge, recipientId, message });
+    const newKudo = new Kudos({ badge, recipientId, message });
     const kudo = await newKudo.save();
     console.log("kudos added successfully");
     res.status(200).send(true);
@@ -123,44 +129,42 @@ app.post("/api/addKudos", async (req, res) => {
   }
 });
 
-
-
 app.get("/api/kudosCount", async (req, res) => {
   try {
     const data = await Kudos.aggregate([
       {
         $group: {
           _id: "$recipientId", // Group by recipientId
-          totalCount: { $sum: 1 } // Calculate the total number of kudos per recipient
-        }
+          totalCount: { $sum: 1 }, // Calculate the total number of kudos per recipient
+        },
       },
       {
         $addFields: {
-          recipientIdObjectId: { $toObjectId: "$_id" } // Convert recipientId (string) to ObjectId
-        }
+          recipientIdObjectId: { $toObjectId: "$_id" }, // Convert recipientId (string) to ObjectId
+        },
       },
       {
         $lookup: {
           from: "employees", // Lookup from the employees collection
           localField: "recipientIdObjectId", // Match the converted ObjectId
           foreignField: "_id", // _id field in the employees collection
-          as: "recipientDetails" // Store the resulting matched employee data in recipientDetails
-        }
+          as: "recipientDetails", // Store the resulting matched employee data in recipientDetails
+        },
       },
       {
-        $unwind: "$recipientDetails" // Unwind the recipientDetails array
+        $unwind: "$recipientDetails", // Unwind the recipientDetails array
       },
       {
         $project: {
           _id: 1, // Keep the recipientId
           totalCount: 1, // Keep the totalCount
-          "recipientDetails.name": 1 // Include the recipient's name from the employees collection
-        }
-      }
-    ])
-    ;
-
-    console.log("Aggregated Data:", data);  // Log the result of the aggregation
+          "recipientDetails.name": 1,
+          // Include the recipient's name from the employees collection
+        },
+      },
+    ]);
+    console.log("Aggregated Data:");
+    console.log(data); // Log the result of the aggregation
     res.status(200).send(data);
   } catch (err) {
     console.log("Error during aggregation:", err);
@@ -168,8 +172,6 @@ app.get("/api/kudosCount", async (req, res) => {
   }
 });
 
-
-
-
-
-app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
+app.listen(process.env.PORT, () =>
+  console.log(`Server running on port ${process.env.PORT}`)
+);
